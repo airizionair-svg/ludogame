@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Ludo Game</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #F4976C;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            touch-action: none;
+        }
+
+        /* Верхняя панель */
+        .top-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 15px;
+            flex-shrink: 0;
+        }
+        .exit-btn {
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: rotate(-90deg);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .room-info {
+            color: white;
+            font-size: 14px;
+            text-align: center;
+        }
+        .room-code {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* Игровая доска */
+        .board-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+            width: 100%;
+            min-height: 0;
+        }
+        #game-board {
+            background: #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* Экраны */
+        .screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .screen.active { display: flex; }
+
+        /* Главное меню */
+        .menu-title {
+            color: white;
+            font-size: 48px;
+            font-weight: 900;
+            text-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        .btn {
+            width: 280px;
+            padding: 18px;
+            margin: 8px;
+            border: none;
+            border-radius: 16px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            text-align: center;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: #C75B39; color: white; box-shadow: 0 4px 0 #A04020; }
+        .btn-secondary { background: white; color: #333; box-shadow: 0 4px 0 #ddd; }
+        .btn-green { background: #8BC34A; color: white; box-shadow: 0 4px 0 #689F38; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        input[type="text"] {
+            width: 280px;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            margin: 8px;
+            text-align: center;
+        }
+
+        /* Лобби */
+        .lobby-players {
+            background: rgba(255,255,255,0.15);
+            border-radius: 16px;
+            padding: 20px;
+            width: 300px;
+            margin: 15px 0;
+        }
+        .lobby-player {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            color: white;
+        }
+        .player-color-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+        }
+        .ready-status {
+            margin-left: auto;
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 8px;
+            background: #FF5252;
+        }
+        .ready-status.ready { background: #8BC34A; }
+
+        /* Игровой интерфейс */
+        .game-ui {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            flex-shrink: 0;
+        }
+        .turn-indicator {
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .dice-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin: 5px 0;
+        }
+        .dice {
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 0 #ccc;
+            transition: transform 0.3s;
+        }
+        .dice.rolling {
+            animation: rollDice 0.6s ease-in-out;
+        }
+        @keyframes rollDice {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(180deg) scale(1.3); }
+            50% { transform: rotate(360deg) scale(1); }
+            75% { transform: rotate(540deg) scale(1.3); }
+            100% { transform: rotate(720deg) scale(1); }
+        }
+        .roll-btn {
+            padding: 15px 50px;
+            background: #C75B39;
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #A04020;
+            transition: all 0.1s;
+        }
+        .roll-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #A04020; }
+        .roll-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .pieces-info {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .piece-status {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 10px;
+            border-radius: 10px;
+            color: white;
+            font-size: 11px;
+        }
+
+        /* Чат/лог */
+        .game-log {
+            width: 100%;
+            max-width: 400px;
+            height: 60px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 8px;
+            overflow-y: auto;
+            margin-top: 8px;
+            color: white;
+            font-size: 12px;
+        }
+        .log-entry { margin: 2px 0; }
+
+        /* Подсветка хода */
+        .highlight-piece {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        /* Модальное окно */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            max-width: 300px;
+            animation: modalIn 0.3s;
+        }
+        @keyframes modalIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .modal h2 { color: #333; margin-bottom: 15px; font-size: 28px; }
+        .winner-color {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 15px auto;
+            border: 4px solid #333;
+        }
+        .modal p { color: #666; margin-bottom: 20px; }
+
+        /* Адаптивность */
+        @media (max-height: 700px) {
+            .menu-title { font-size: 36px; margin-bottom: 20px; }
+            .btn { padding: 14px; font-size: 18px; }
+            .game-log { height: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Экран меню -->
+    <div id="menu-screen" class="screen active">
+        <div class="menu-title">🎲 LUDO</div>
+        <input type="text" id="player-name" placeholder="Ваше имя" value="Игрок">
+        <button class="btn btn-primary" onclick="showScreen('create-screen')">СОЗДАТЬ ИГРУ</button>
+        <button class="btn btn-secondary" onclick="showScreen('join-screen')">ПРИСОЕДИНИТЬСЯ</button>
+    </div>
+
+    <!-- Экран создания -->
+    <div id="create-screen" class="screen">
+        <div class="menu-title">СОЗДАТЬ</div>
+        <p style="color:white; margin-bottom:20px;">Создай комнату и позови друзей!</p>
+        <button class="btn btn-green" onclick="createRoom()">СОЗДАТЬ КОМНАТУ</button>
+        <button class="btn btn-secondary" onclick="showScreen('menu-screen')">НАЗАД</button>
+    </div>
+
+    <!-- Экран присоединения -->
+    <div id="join-screen" class="screen">
+        <div class="menu-title">ВОЙТИ</div>
+        <input type="text" id="room-code" placeholder="Код комнаты (ABC12)" maxlength="5">
+        <button class="btn btn-green" onclick="joinRoom()">ВОЙТИ В КОМНАТУ</button>
+        <button class="btn btn-secondary" onclick="showScreen('menu-screen')">НАЗАД</button>
+    </div>
+
+    <!-- Экран лобби -->
+    <div id="lobby-screen" class="screen">
+        <div class="top-bar">
+            <div></div>
+            <div class="room-info">
+                <div>КОМНАТА</div>
+                <div id="lobby-room-code" class="room-code">---</div>
+            </div>
+            <button class="exit-btn" onclick="leaveRoom()">EXIT</button>
+        </div>
+        <div class="lobby-players" id="lobby-players"></div>
+        <button class="btn btn-primary" id="ready-btn" onclick="toggleReady()">ГОТОВ</button>
+        <button class="btn btn-green" id="start-btn" onclick="startGame()" style="display:none;">СТАРТ</button>
+    </div>
+
+    <!-- Экран игры -->
+    <div id="game-screen" class="screen">
+        <div class="top-bar">
+            <div></div>
+            <div class="room-info">
+                <div id="game-room-code" class="room-code">---</div>
+            </div>
+            <button class="exit-btn" onclick="leaveRoom()">EXIT</button>
+        </div>
+
+        <div class="board-container">
+            <canvas id="game-board" width="360" height="360"></canvas>
+        </div>
+
+        <div class="game-ui">
+            <div class="turn-indicator" id="turn-indicator">Ожидание...</div>
+            <div class="dice-container">
+                <div class="dice" id="dice">?</div>
+                <button class="roll-btn" id="roll-btn" onclick="rollDice()" disabled>ROLL</button>
+            </div>
+            <div class="pieces-info" id="pieces-info"></div>
+            <div class="game-log" id="game-log"></div>
+        </div>
+    </div>
+
+    <!-- Модальное окно -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <h2 id="modal-title">Победа!</h2>
+            <div class="winner-color" id="winner-color"></div>
+            <p id="modal-text">Игрок выиграл!</p>
+            <button class="btn btn-primary" onclick="closeModal()">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        // ==================== КОНФИГУРАЦИЯ ====================
+        const COLORS = {
+            yellow: '#FFC107',
+            blue: '#03A9F4',
+            red: '#FF5252',
+            green: '#8BC34A'
+        };
+        const COLOR_NAMES = { yellow: 'Жёлтый', blue: 'Синий', red: 'Красный', green: 'Зелёный' };
+
+        const BOARD_SIZE = 15;
+        let CELL_SIZE = 24;
+        let CANVAS_SIZE = BOARD_SIZE * CELL_SIZE;
+
+        // Пути для каждого цвета
+        const PATHS = {
+            yellow: [
+                [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],
+                [1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+                [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],[14,6],
+                [13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],
+                [7,1],[7,2],[7,3],[7,4],[7,5],[7,6]
+            ],
+            blue: [
+                [1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+                [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],[14,6],
+                [13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],
+                [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],
+                [1,7],[2,7],[3,7],[4,7],[5,7],[6,7]
+            ],
+            red: [
+                [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],[14,6],
+                [13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],
+                [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],
+                [1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],
+                [7,13],[7,12],[7,11],[7,10],[7,9],[7,8]
+            ],
+            green: [
+                [13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0],
+                [6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],
+                [1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+                [8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],
+                [13,7],[12,7],[11,7],[10,7],[9,7],[8,7]
+            ]
+        };
+
+        const BASES = {
+            yellow: [[1,1],[1,4],[4,1],[4,4]],
+            blue: [[1,10],[1,13],[4,10],[4,13]],
+            red: [[10,1],[10,4],[13,1],[13,4]],
+            green: [[10,10],[10,13],[13,10],[13,13]]
+        };
+
+        const SAFE_ZONES = [[2,6],[6,2],[10,6],[6,10],[6,6],[6,8],[8,6],[8,8]];
+
+        // ==================== SOCKET ====================
+        const socket = io({ transports: ['websocket', 'polling'] });
+        let myId = null;
+        let myColor = null;
+        let roomState = null;
+        let canRoll = false;
+        let canMovePiece = false;
+        let validMoves = [];
+        let isRolling = false;
+
+        // ==================== CANVAS ====================
+        const canvas = document.getElementById('game-board');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const container = document.querySelector('.board-container');
+            const maxSize = Math.min(container.clientWidth, container.clientHeight) - 10;
+            CELL_SIZE = Math.floor(maxSize / BOARD_SIZE);
+            CANVAS_SIZE = CELL_SIZE * BOARD_SIZE;
+            canvas.width = CANVAS_SIZE;
+            canvas.height = CANVAS_SIZE;
+            canvas.style.width = CANVAS_SIZE + 'px';
+            canvas.style.height = CANVAS_SIZE + 'px';
+            drawBoard();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawBoard() {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Фон доски
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Рисуем сетку
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const x = c * CELL_SIZE;
+                    const y = r * CELL_SIZE;
+
+                    let cellColor = '#fff';
+                    let isPath = false;
+                    let isSafe = false;
+                    let isHome = false;
+                    let pathColor = null;
+
+                    // Проверяем пути
+                    Object.keys(PATHS).forEach(col => {
+                        PATHS[col].forEach((pos, idx) => {
+                            if (pos[0] === r && pos[1] === c) {
+                                isPath = true;
+                                pathColor = col;
+                                if (idx >= 51) isHome = true;
+                            }
+                        });
+                    });
+
+                    // Safe зоны
+                    SAFE_ZONES.forEach(pos => {
+                        if (pos[0] === r && pos[1] === c) isSafe = true;
+                    });
+
+                    // Определяем цвет клетки
+                    if (r >= 0 && r <= 5 && c >= 0 && c <= 5) {
+                        cellColor = '#FFC107';
+                    } else if (r >= 0 && r <= 5 && c >= 9 && c <= 14) {
+                        cellColor = '#03A9F4';
+                    } else if (r >= 9 && r <= 14 && c >= 0 && c <= 5) {
+                        cellColor = '#FF5252';
+                    } else if (r >= 9 && r <= 14 && c >= 9 && c <= 14) {
+                        cellColor = '#8BC34A';
+                    } else if (isPath) {
+                        if (isHome) {
+                            cellColor = COLORS[pathColor] + '40';
+                        } else {
+                            cellColor = '#f0f0f0';
+                        }
+                    }
+
+                    // Рисуем клетку
+                    ctx.fillStyle = cellColor;
+                    ctx.fillRect(x + 0.5, y + 0.5, CELL_SIZE - 1, CELL_SIZE - 1);
+
+                    // Safe-зона — звёздочка
+                    if (isSafe && !isHome) {
+                        ctx.fillStyle = '#FFD700';
+                        drawStar(x + CELL_SIZE/2, y + CELL_SIZE/2, CELL_SIZE*0.25, CELL_SIZE*0.12, 5);
+                    }
+
+                    // Стрелки на старте
+                    if (r === 0 && c === 7) drawArrow(x + CELL_SIZE/2, y + CELL_SIZE/2, 'down', '#03A9F4');
+                    if (r === 14 && c === 7) drawArrow(x + CELL_SIZE/2, y + CELL_SIZE/2, 'up', '#8BC34A');
+                    if (r === 7 && c === 0) drawArrow(x + CELL_SIZE/2, y + CELL_SIZE/2, 'right', '#FFC107');
+                    if (r === 7 && c === 14) drawArrow(x + CELL_SIZE/2, y + CELL_SIZE/2, 'left', '#FF5252');
+                }
+            }
+
+            // Центральная пирамида
+            drawCenter();
+
+            // Рисуем фишки
+            if (roomState && roomState.board) {
+                Object.keys(roomState.board).forEach(color => {
+                    const pieces = roomState.board[color].pieces;
+                    pieces.forEach((piece, idx) => {
+                        if (piece.finished) return;
+
+                        let px, py;
+                        if (!piece.onBoard) {
+                            const pos = BASES[color][idx];
+                            px = pos[1] * CELL_SIZE + CELL_SIZE/2;
+                            py = pos[0] * CELL_SIZE + CELL_SIZE/2;
+                        } else {
+                            const pos = PATHS[color][piece.pathIndex];
+                            px = pos[1] * CELL_SIZE + CELL_SIZE/2;
+                            py = pos[0] * CELL_SIZE + CELL_SIZE/2;
+                        }
+
+                        const isClickable = canMovePiece && validMoves.includes(idx) && myColor === color;
+                        drawPiece(px, py, color, idx, isClickable);
+                    });
+                });
+            }
+        }
+
+        function drawStar(cx, cy, outerR, innerR, points) {
+            ctx.beginPath();
+            for (let i = 0; i < points * 2; i++) {
+                const r = i % 2 === 0 ? outerR : innerR;
+                const angle = (Math.PI * i) / points - Math.PI / 2;
+                const x = cx + Math.cos(angle) * r;
+                const y = cy + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawArrow(cx, cy, dir, color) {
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            const s = CELL_SIZE * 0.3;
+            if (dir === 'down') {
+                ctx.moveTo(cx, cy + s); ctx.lineTo(cx - s, cy - s/2); ctx.lineTo(cx + s, cy - s/2);
+            } else if (dir === 'up') {
+                ctx.moveTo(cx, cy - s); ctx.lineTo(cx - s, cy + s/2); ctx.lineTo(cx + s, cy + s/2);
+            } else if (dir === 'right') {
+                ctx.moveTo(cx + s, cy); ctx.lineTo(cx - s/2, cy - s); ctx.lineTo(cx - s/2, cy + s);
+            } else if (dir === 'left') {
+                ctx.moveTo(cx - s, cy); ctx.lineTo(cx + s/2, cy - s); ctx.lineTo(cx + s/2, cy + s);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        function drawCenter() {
+            const cx = 7.5 * CELL_SIZE;
+            const cy = 7.5 * CELL_SIZE;
+            const s = 3 * CELL_SIZE;
+
+            const triangles = [
+                { color: '#FFC107', points: [[cx-s/2,cy-s/2],[cx,cy],[cx-s/2,cy+s/2]] },
+                { color: '#03A9F4', points: [[cx-s/2,cy-s/2],[cx,cy],[cx+s/2,cy-s/2]] },
+                { color: '#FF5252', points: [[cx+s/2,cy-s/2],[cx,cy],[cx+s/2,cy+s/2]] },
+                { color: '#8BC34A', points: [[cx-s/2,cy+s/2],[cx,cy],[cx+s/2,cy+s/2]] }
+            ];
+
+            triangles.forEach(t => {
+                ctx.fillStyle = t.color;
+                ctx.beginPath();
+                ctx.moveTo(t.points[0][0], t.points[0][1]);
+                ctx.lineTo(t.points[1][0], t.points[1][1]);
+                ctx.lineTo(t.points[2][0], t.points[2][1]);
+                ctx.closePath();
+                ctx.fill();
+            });
+        }
+
+        function drawPiece(x, y, color, num, clickable) {
+            const r = CELL_SIZE * 0.32;
+
+            // Подсветка если можно кликнуть
+            if (clickable) {
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.beginPath();
+                ctx.arc(x, y, r + 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Пульсация
+                const pulse = Math.sin(Date.now() / 200) * 3;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, r + 4 + pulse, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Тень
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.arc(x + 1, y + 2, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Фишка
+            ctx.fillStyle = COLORS[color];
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Обводка
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Внутренний кружок
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.beginPath();
+            ctx.arc(x - r*0.15, y - r*0.15, r * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Номер
+            ctx.fillStyle = '#222';
+            ctx.font = `bold ${Math.floor(r)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(num + 1, x, y);
+        }
+
+        // Анимация фишек
+        function animate() {
+            if (roomState && roomState.status === 'playing') {
+                drawBoard();
+            }
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // ==================== UI ФУНКЦИИ ====================
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if (id === 'game-screen') {
+                setTimeout(resizeCanvas, 100);
+            }
+        }
+
+        function createRoom() {
+            const name = document.getElementById('player-name').value || 'Игрок';
+            socket.emit('create-room', { name }, (res) => {
+                if (res.success) {
+                    myId = socket.id;
+                    roomState = res.state;
+                    document.getElementById('lobby-room-code').textContent = res.roomId;
+                    showScreen('lobby-screen');
+                    updateLobby();
+                }
+            });
+        }
+
+        function joinRoom() {
+            const code = document.getElementById('room-code').value.trim();
+            const name = document.getElementById('player-name').value || 'Игрок';
+            if (!code) return alert('Введите код комнаты');
+
+            socket.emit('join-room', { roomId: code, name }, (res) => {
+                if (res.success) {
+                    myId = socket.id;
+                    roomState = res.state;
+                    document.getElementById('lobby-room-code').textContent = code.toUpperCase();
+                    showScreen('lobby-screen');
+                    updateLobby();
+                } else {
+                    alert(res.error || 'Ошибка');
+                }
+            });
+        }
+
+        function toggleReady() {
+            socket.emit('ready');
+        }
+
+        function startGame() {
+            socket.emit('start-game');
+        }
+
+        function leaveRoom() {
+            location.reload();
+        }
+
+        function updateLobby() {
+            if (!roomState) return;
+            const container = document.getElementById('lobby-players');
+            container.innerHTML = '';
+
+            roomState.players.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'lobby-player';
+                const isMe = p.id === myId;
+                const colorDot = p.color ? `<div class="player-color-dot" style="background:${COLORS[p.color]}"></div>` : '<div class="player-color-dot" style="background:#ccc"></div>';
+                div.innerHTML = `${colorDot}<span>${p.name}${isMe ? ' (Вы)' : ''}</span><span class="ready-status ${p.ready ? 'ready' : ''}">${p.ready ? '✓ ГОТОВ' : 'ОЖИДАЕТ'}</span>`;
+                container.appendChild(div);
+            });
+
+            const isHost = roomState.players[0]?.id === myId;
+            const allReady = roomState.players.every(p => p.ready);
+            document.getElementById('start-btn').style.display = (isHost && allReady && roomState.players.length >= 2) ? 'block' : 'none';
+        }
+
+        function rollDice() {
+            if (!canRoll || isRolling) return;
+            isRolling = true;
+            canRoll = false;
+            document.getElementById('roll-btn').disabled = true;
+
+            const diceEl = document.getElementById('dice');
+            diceEl.classList.add('rolling');
+
+            // Анимация кручения
+            let rolls = 0;
+            const rollInterval = setInterval(() => {
+                diceEl.textContent = Math.floor(Math.random() * 6) + 1;
+                rolls++;
+                if (rolls > 10) {
+                    clearInterval(rollInterval);
+                    socket.emit('roll-dice');
+                }
+            }, 100);
+
+            setTimeout(() => {
+                diceEl.classList.remove('rolling');
+            }, 600);
+        }
+
+        function updateGameUI() {
+            if (!roomState) return;
+
+            document.getElementById('game-room-code').textContent = roomState.id;
+
+            const currentPlayer = roomState.players.find(p => p.color === roomState.currentPlayer);
+            const isMyTurn = currentPlayer && currentPlayer.id === myId;
+
+            document.getElementById('turn-indicator').textContent = 
+                isMyTurn ? 'ВАШ ХОД!' : `Ход: ${COLOR_NAMES[roomState.currentPlayer] || '...'}`;
+            document.getElementById('turn-indicator').style.color = isMyTurn ? '#FFD700' : '#fff';
+
+            document.getElementById('dice').textContent = roomState.dice || '?';
+
+            const myPlayer = roomState.players.find(p => p.id === myId);
+            if (myPlayer) {
+                const pieces = roomState.board[myPlayer.color].pieces;
+                const infoEl = document.getElementById('pieces-info');
+                infoEl.innerHTML = '';
+                pieces.forEach((p, i) => {
+                    const status = p.finished ? '✅ Дома' : p.onBoard ? `📍 ${p.pathIndex}` : '🏠 База';
+                    const div = document.createElement('div');
+                    div.className = 'piece-status';
+                    div.innerHTML = `Фишка ${i+1}: ${status}`;
+                    infoEl.appendChild(div);
+                });
+            }
+
+            canRoll = isMyTurn && roomState.status === 'playing' && !isRolling;
+            document.getElementById('roll-btn').disabled = !canRoll;
+
+            drawBoard();
+        }
+
+        function addLog(text) {
+            const log = document.getElementById('game-log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function showModal(title, text, color) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-text').textContent = text;
+            document.getElementById('winner-color').style.background = color || '#ccc';
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+
+        // ==================== ОБРАБОТКА КЛИКОВ ====================
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function handleCanvasClick(e) {
+            e.preventDefault();
+
+            if (!roomState || roomState.status !== 'playing') return;
+            if (!canMovePiece || validMoves.length === 0) return;
+
+            const coords = getCanvasCoordinates(e);
+            const col = Math.floor(coords.x / CELL_SIZE);
+            const row = Math.floor(coords.y / CELL_SIZE);
+
+            const myPlayer = roomState.players.find(p => p.id === myId);
+            if (!myPlayer) return;
+
+            const currentPlayer = roomState.players.find(p => p.color === roomState.currentPlayer);
+            if (!currentPlayer || currentPlayer.id !== myId) return;
+
+            // Ищем какую фишку кликнули
+            const pieces = roomState.board[myPlayer.color].pieces;
+            for (let i = 0; i < pieces.length; i++) {
+                if (!validMoves.includes(i)) continue;
+
+                const piece = pieces[i];
+                let pieceRow, pieceCol;
+
+                if (!piece.onBoard) {
+                    pieceRow = BASES[myPlayer.color][i][0];
+                    pieceCol = BASES[myPlayer.color][i][1];
+                } else {
+                    pieceRow = PATHS[myPlayer.color][piece.pathIndex][0];
+                    pieceCol = PATHS[myPlayer.color][piece.pathIndex][1];
+                }
+
+                // Проверяем попадание (с небольшим запасом)
+                const dist = Math.sqrt(Math.pow(pieceCol - col, 2) + Math.pow(pieceRow - row, 2));
+                if (dist < 1.5) {
+                    canMovePiece = false;
+                    validMoves = [];
+                    socket.emit('move-piece', { pieceIndex: i });
+                    return;
+                }
+            }
+        }
+
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', handleCanvasClick, { passive: false });
+
+        // ==================== SOCKET СОБЫТИЯ ====================
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            addLog('Соединение потеряно...');
+        });
+
+        socket.on('room-update', (state) => {
+            roomState = state;
+            updateLobby();
+        });
+
+        socket.on('game-started', (state) => {
+            roomState = state;
+            myColor = state.players.find(p => p.id === myId)?.color;
+            showScreen('game-screen');
+            updateGameUI();
+            addLog('🎮 Игра началась!');
+        });
+
+        socket.on('dice-rolled', (data) => {
+            roomState = data.state;
+            isRolling = false;
+            document.getElementById('dice').textContent = data.dice;
+            addLog(`${COLOR_NAMES[data.player]} выбросил ${data.dice}`);
+
+            const myPlayer = roomState.players.find(p => p.id === myId);
+            const isMyTurn = myPlayer && myPlayer.color === data.player;
+
+            if (isMyTurn) {
+                validMoves = data.validMoves || [];
+                if (validMoves.length > 0) {
+                    canMovePiece = true;
+                    canRoll = false;
+                    addLog('Выберите фишку для хода');
+                } else {
+                    addLog('Нет возможных ходов');
+                    setTimeout(() => {
+                        socket.emit('move-piece', { pieceIndex: -1 });
+                    }, 1500);
+                }
+            }
+
+            updateGameUI();
+        });
+
+        socket.on('piece-moved', (data) => {
+            roomState = data.state;
+            canMovePiece = false;
+            validMoves = [];
+
+            const lastMove = roomState.moveHistory[roomState.moveHistory.length - 1];
+            if (lastMove) {
+                addLog(`${COLOR_NAMES[lastMove.player]} походил фишкой ${lastMove.piece + 1}`);
+                if (lastMove.killed) {
+                    addLog(`💀 ${COLOR_NAMES[lastMove.killed.color]} убит!`);
+                }
+            }
+
+            updateGameUI();
+        });
+
+        socket.on('game-over', (data) => {
+            roomState = data.state;
+            updateGameUI();
+            const winner = roomState.players.find(p => p.color === data.winner);
+            showModal(
+                '🎉 ПОБЕДА!',
+                `${winner?.name || COLOR_NAMES[data.winner]} победил!`,
+                COLORS[data.winner]
+            );
+        });
+
+        socket.on('player-left', (state) => {
+            roomState = state;
+            if (state.status === 'waiting') {
+                updateLobby();
+            } else {
+                addLog('Игрок вышел');
+                updateGameUI();
+            }
+        });
+
+        socket.on('error', (msg) => {
+            addLog('❌ ' + msg);
+            isRolling = false;
+            canRoll = true;
+            updateGameUI();
+        });
+
+        // Первоначальная отрисовка
+        resizeCanvas();
+    </script>
+</body>
+</html>
